@@ -23,7 +23,7 @@ def execute_command_ssh(ip, port=22,timeout=10):
         look_for_keys=False,
         allow_agent=False
     )
-    
+
     shell = ssh.invoke_shell()
     shell.settimeout(2)
 
