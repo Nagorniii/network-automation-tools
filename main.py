@@ -37,6 +37,7 @@ def execute_command_ssh(ip, port=22,timeout=10):
 def main():
     print("Hello")
     execute_command_ssh(ip1)
+    print("goodbye")
 
 
 if __name__ == "__main__":
