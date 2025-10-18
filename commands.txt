@@ -1,2 +1,2 @@
 terminal length 0
-sh int desc
+sh run
