@@ -29,6 +29,23 @@ backup_folder = "backup"
 os.makedirs(backup_folder, exist_ok=True)
 
 
+def read_until_prompt(shell, prompt="#", pause=0.2, max_wait=300):
+    output = ""
+    start_time = time.time()
+
+    while True:
+        if shell.recv_ready():
+            data = shell.recv(65535).decode("utf-8", errors="ignore")
+            output += data
+            if prompt in output.splitlines()[-1]:
+                break
+        else:
+            time.sleep(pause)
+        if time.time() - start_time > max_wait:
+            break
+
+    return output
+
 def read_commands():
     try:
         with open(command_file, "r") as f:
@@ -38,42 +55,37 @@ def read_commands():
         return []
 
 
-def execute_command_ssh(ip, commands, port=22, timeout=10, recv_pause=10.0):
+def execute_command_ssh(ip, commands, port=22, timeout=10):
     try:
         logging.info(f"Підключення до {ip}...")
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         ssh.connect(
             hostname=ip,
             port=port,
+            timeout=timeout,
             username=username,
             password=password,
             look_for_keys=False,
-            allow_agent=False,
-            timeout=timeout
+            allow_agent=False
         )
 
         shell = ssh.invoke_shell()
         time.sleep(0.5)
 
         output = ""
+        shell.send("terminal length 0\n")
+        time.sleep(0.5)
+        shell.recv(65535)
+
         for cmd in commands:
             shell.send(cmd + "\n")
+            time.sleep(0.5)
+            output += read_until_prompt(shell, prompt="#")
 
-            buffer = ""
-            last_recv = time.time()
-            while True:
-                if shell.recv_ready():
-                    data = shell.recv(65535).decode("utf-8", errors="ignore")
-                    buffer += data
-                    last_recv = time.time()  # оновлюємо час останнього отриманого пакета
-                elif time.time() - last_recv > recv_pause:
-                    # якщо даних не надходило більше recv_pause секунд — вважаємо, що команда завершена
-                    break
-                else:
-                    time.sleep(0.1)
-            output += buffer
 
+        shell.close()
         ssh.close()
 
         if output.strip():
@@ -106,7 +118,7 @@ def main():
         logging.error(f"Файл із IP '{ip_addresses}' не знайдено.")
         return
 
-    with ThreadPoolExecutor(max_workers = 5) as executor:
+    with ThreadPoolExecutor(max_workers = min(32, os.cpu_count()+4)) as executor:
         futures = {executor.submit(execute_command_ssh, ip, commands):ip for ip in ips}
         for future in as_completed(futures):
             ip = futures[future]
