@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+paramiko
+ping3
+python-dotenv

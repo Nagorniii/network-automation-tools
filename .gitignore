@@ -24,4 +24,5 @@ dist/
 *.egg-info/
 .idea/
 ip_address.txt
+ip_addresses.txt
 backup

@@ -1,0 +1,11 @@
+# monitoring/docker-compose.yml
+version: "3.9"
+
+services:
+  monitor:
+    build: .
+    container_name: network_monitor
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    command: python app/main.py
