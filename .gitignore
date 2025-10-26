@@ -26,3 +26,4 @@ dist/
 ip_address.txt
 ip_addresses.txt
 backup
+*.json
