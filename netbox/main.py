@@ -1,6 +1,6 @@
 from pynetbox import api
 from dotenv import load_dotenv
-from ipaddress import ip_network
+from ipaddress import ip_network, ip_address
 import os
 
 # ====== Підключення до NetBox ======
@@ -8,6 +8,7 @@ load_dotenv()
 NETBOX_URL = os.getenv("NETBOX_URL")
 NETBOX_TOKEN = os.getenv("NETBOX_TOKEN")
 nb = api(NETBOX_URL, token=NETBOX_TOKEN)
+
 
 # ================= Функції =================
 
@@ -21,6 +22,7 @@ def view_prefixes():
         print(f"- {p.prefix} | {p.status} | {p.description}")
     return prefixes
 
+
 def validate_prefix(prefix_str: str):
     try:
         return str(ip_network(prefix_str, strict=False))
@@ -29,7 +31,7 @@ def validate_prefix(prefix_str: str):
         return None
 
 
-def create_prefix(prefix, description="Створено скриптом" ):
+def create_prefix(prefix, description="Створено скриптом"):
     prefix_valid = validate_prefix(prefix)
     if not prefix_valid:
         return None
@@ -43,8 +45,7 @@ def create_prefix(prefix, description="Створено скриптом" ):
     return created
 
 
-def create_ip_in_prefix(prefix_str, description="", dns_name="",  tags=None, ip_address=None, from_end=False):
-
+def create_ip_in_prefix(prefix_str, description="", dns_name="", tags=None, ip_address=None, from_end=False):
     prefix = nb.ipam.prefixes.get(prefix=prefix_str)
     if not prefix:
         print(f"❌ Префікс {prefix_str} не знайдено.")
@@ -98,18 +99,126 @@ def create_ip_in_prefix(prefix_str, description="", dns_name="",  tags=None, ip_
     return created_ip.address
 
 
+def create_multiple_ips_in_prefix(
+        prefix_str: str,
+        count: int = 1,
+        description: str = "",
+        dns_template: str | None = None,
+        dns_list: list | None = None,
+        tags: list | None = None,
+        start_ip: str | None = None,
+        from_end: bool = False
+):
+    # Перевірка префіксу
+    prefix = nb.ipam.prefixes.get(prefix=prefix_str)
+    if not prefix:
+        print(f"❌ Префікс {prefix_str} не знайдено.")
+        return []
+
+    # Отримуємо список вільних IP (список словників з 'address')
+    available = prefix.available_ips.list()  # це список dict з ключем 'address'
+    available_addresses = [a['address'].split('/')[0] for a in available]  # тільки IP без /mask
+
+    if not available_addresses and not start_ip:
+        print(f"⚠️ Вільних IP немає у {prefix_str}.")
+        return []
+
+    # Підготуємо dns-імена
+    if dns_list:
+        if len(dns_list) != count:
+            print("❌ Довжина dns_list не збігається з count.")
+            return []
+        dns_names = dns_list
+    elif dns_template:
+        dns_names = [dns_template.format(n=i + 1) for i in range(count)]
+    else:
+        dns_names = ["" for _ in range(count)]
+
+    # Підготовка тегів
+    tags_payload = []
+    if tags:
+        for tn in (t for t in tags if t and t.strip()):
+            tag_obj = nb.extras.tags.get(name=tn.strip()) or nb.extras.tags.create(name=tn.strip())
+            tags_payload.append({"id": tag_obj.id})
+
+    # Визначаємо початкові IP для створення
+    selected_ips = []
+
+    if start_ip:
+        # Переконаємось, що start_ip є валідним і є в available -> потім інкрементуємо
+        base_ip = start_ip.split('/')[0]
+        mask = ""
+        if start_ip and '/' in start_ip:
+            mask = '/' + start_ip.split('/')[1]
+        try:
+            cur = ip_address(base_ip)
+        except ValueError:
+            print("❌ Некоректний start_ip.")
+            return []
+
+        if base_ip in available_addresses:
+            idx = available_addresses.index(base_ip)
+
+            for i in range(count):
+                if idx + i < len(available_addresses):
+                    selected_ips.append(available_addresses[idx + i])
+                else:
+
+                    candidate = str(ip_address(base_ip) + i)
+                    selected_ips.append(candidate)
+        else:
+
+            for i in range(count):
+                selected_ips.append(str(cur + i))
+
+    else:
+        # Вибираємо по first/last available
+        if from_end:
+            pool = list(reversed(available_addresses))
+        else:
+            pool = available_addresses
+
+        if len(pool) < count:
+            print(f"⚠️ В префіксі лише {len(pool)} вільних IP, запитано {count}. Буде створено {len(pool)}.")
+        for i in range(min(count, len(pool))):
+            selected_ips.append(pool[i])
+
+    # Створюємо IP-адреси у NetBox по черзі
+    created = []
+    for idx, ip in enumerate(selected_ips):
+        dns = dns_names[idx] if idx < len(dns_names) else ""
+        exists = nb.ipam.ip_addresses.get(address=ip)
+        if exists:
+            print(f"⚠️ IP {ip} вже існує — пропускаємо.")
+            created.append(exists.address)
+            continue
+
+        try:
+            obj = nb.ipam.ip_addresses.create(
+                address=f"{ip}{mask}",
+                status="active",
+                description=description,
+                dns_name=dns,
+                tags=tags_payload
+            )
+            print(f"✅ Створено IP {obj.address} (dns: {dns})")
+            created.append(obj.address)
+        except Exception as e:
+            print(f"❌ Помилка при створенні {ip}: {e}")
+
+    return created
+
 
 # ================= Головне меню =================
 
 def main_menu():
-
-
     while True:
         print("\n=== Головне меню ===")
         print("1. Переглянути всі префікси")
         print("2. Створити новий префікс")
         print("3. Додати мережу до префіксу")
         print("4. Додати IP")
+        print("5. Створити декілька ІР")
         print("0. Вихід")
 
         choice = input("Оберіть дію: ").strip()
@@ -124,11 +233,11 @@ def main_menu():
             prefix_input_for_loopback = input("Введіть префікс в якому буде створено loopback: ").strip()
             description_input = input("Введіть description:\n").strip()
             dns_input = input("Введіть dns: ").strip()
-            a=create_ip_in_prefix(
+            a = create_ip_in_prefix(
                 prefix_input_for_loopback,
                 description_input,
                 'rt' + dns_input + '.mgmt',
-                tags=["router","wh"]
+                tags=["router", "wh"]
             )
             print(f"Створена ІР {a}")
             ip_part, mask = a.split('/')
@@ -154,7 +263,7 @@ def main_menu():
                 tags=["switch", "wh"],
                 from_end=True)
             create_ip_in_prefix(
-                "172.24.64.0/19" ,
+                "172.24.64.0/19",
                 description_input,
                 'rt' + dns_input + '.mgmt',
                 tags=[""]
@@ -168,6 +277,24 @@ def main_menu():
         elif choice == "4":
             prefix_input = input("Введіть префікс: ").strip()
             create_ip_in_prefix(prefix_input)
+        elif choice == "5":
+            prefix_input = input("Введіть префікс в якому необхідно створити ІР: ").strip()
+            count = int(input("Скільки ІР необхідно додати? "))
+            dns_template = input("Приклад DNS: sw{n}.wh ")
+            description_input = input("Введіть description: ").strip()
+            start_ip = input("Початкова ІР: ")
+            tags_input = input("Введіть теги через пробіл: ").strip()
+
+            tags_list = [t.strip() for t in tags_input.split() if t.strip()]
+            create_multiple_ips_in_prefix(
+                prefix_str=prefix_input,
+                count=count,
+                start_ip=start_ip,
+                dns_template=dns_template,
+                description=description_input,
+                tags=tags_list
+            )
+
         elif choice == "0":
             print("Вихід...")
             break
@@ -180,6 +307,6 @@ if __name__ == "__main__":
     try:
         main_menu()
     except KeyboardInterrupt:
-        print("\n🚪 Завершення роботи...")
+        print("\n Завершення роботи...")
     except Exception as e:
         print(f"❌ Виникла помилка: {e}")
