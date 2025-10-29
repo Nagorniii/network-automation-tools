@@ -15,8 +15,10 @@ A lightweight Python utility for automating IP and prefix management in **NetBox
 
 - Python 3.8+
 - Dependencies:
+
+
 ```
-pip install pynetbox python-dotenv
+  pip install -r requirements.txt
 ```
 - A valid NetBox API token
 

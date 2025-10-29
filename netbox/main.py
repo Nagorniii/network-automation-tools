@@ -1,7 +1,8 @@
 from pynetbox import api
 from dotenv import load_dotenv
 from ipaddress import ip_network, ip_address
-import os
+from tabulate import tabulate
+import os, math
 
 # ====== Підключення до NetBox ======
 load_dotenv()
@@ -11,17 +12,52 @@ nb = api(NETBOX_URL, token=NETBOX_TOKEN)
 
 
 # ================= Функції =================
-
-def view_prefixes():
+def view_prefixes(filter_str=None, per_page=10):
     prefixes = nb.ipam.prefixes.all()
     if not prefixes:
         print("Префіксів немає.")
         return []
-    print("\nСписок префіксів:")
-    for p in prefixes:
-        print(f"- {p.prefix} | {p.status} | {p.description}")
-    return prefixes
 
+    # === ФІЛЬТР ===
+    if not filter_str:
+        filter_str = input("Введіть частину адреси або опису для фільтрації (або Enter для всіх): ").strip()
+
+    filtered = [
+        p for p in prefixes
+        if filter_str.lower() in p.prefix.lower() or filter_str.lower() in (p.description or "").lower()
+    ]
+
+    if not filtered:
+        print("Нічого не знайдено.")
+        return []
+
+    # === ПАГІНАЦІЯ ===
+    total = len(filtered)
+    total_pages = math.ceil(total / per_page)
+    page = 1
+
+    while True:
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_data = filtered[start:end]
+
+        table = [[p.prefix, p.status.value, p.description or "—"] for p in page_data]
+        print("\n" + tabulate(table, headers=["Prefix", "Status", "Description"], tablefmt="fancy_grid"))
+        print(f"📄 Сторінка {page}/{total_pages} | Всього записів: {total}")
+
+        # === НАВІГАЦІЯ ===
+        if total_pages == 1:
+            break
+
+        action = input("\n[n] Наступна | [p] Попередня | [q] Вихід: ").strip().lower()
+        if action == "n" and page < total_pages:
+            page += 1
+        elif action == "p" and page > 1:
+            page -= 1
+        elif action == "q" or action == "":
+            break
+        else:
+            print("⚠️ Невірна команда.")
 
 def validate_prefix(prefix_str: str):
     try:
