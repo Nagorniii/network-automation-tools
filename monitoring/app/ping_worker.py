@@ -29,11 +29,8 @@ def ping_ip(ip):
 
 
 def main():
-
-    with open("../ip_addresses.txt", "r") as f:
+    """with open("../ip_addresses.txt", "r") as f:
         ips = [line.strip() for line in f if line.strip()]
-
-
     with ThreadPoolExecutor(max_workers = min(32, os.cpu_count()+4)) as executor:
         futures = {executor.submit(ping_ip, ip):ip for ip in ips}
         for future in as_completed(futures):
@@ -46,7 +43,7 @@ def main():
                     logging.info(f"{timestamp} {ip} - Offline")
 
             except Exception as e:
-                logging.error (f"[FATAL] {ip} crashed: {e}")
+                logging.error (f"[FATAL] {ip} crashed: {e}")"""
 
 if __name__ == "__main__":
     main()

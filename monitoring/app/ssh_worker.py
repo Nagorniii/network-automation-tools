@@ -1,7 +1,7 @@
 import paramiko, socket
 import os, json, re
 import time
-from ping_worker import ping_ip
+import subprocess
 import logging
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,6 +15,16 @@ username = os.getenv("user")
 password = os.getenv("pass")
 commands = ["sh ip int b", "sh run | i hostname"]
 
+def ping_ip(ip):
+    timestamp = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+    reply = subprocess.run(['ping', '-c', '2', '-W', '2', ip],
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE,
+                           encoding='utf-8')
+    if reply.returncode == 0:
+        return True, ip, timestamp
+    else:
+        return False, ip, timestamp
 
 def execute_command_ssh(ip,commands, port=22, timeout=10):
     try:
@@ -100,11 +110,9 @@ def parse_hostname(results):
 def main():
     results = {}
 
-    # 1️⃣ Зчитуємо IP-адреси
     with open("../ip_addresses.txt", "r") as f:
         ips = [line.strip() for line in f if line.strip()]
 
-    # 2️⃣ Перевіряємо доступність
     logging.info("Починаю перевірку доступності хостів...")
     with ThreadPoolExecutor(max_workers=min(32, os.cpu_count()+4)) as executor:
         futures = {executor.submit(ping_ip, ip): ip for ip in ips}
@@ -120,8 +128,7 @@ def main():
                 logging.error(f"[FATAL] {ip} crashed: {e}")
                 results[ip] = {"status": "error", "error": str(e)}
 
-    # 3️⃣ Виконуємо SSH для живих
-    online_hosts = [ip for ip, data in results.items() if data["status"] == "online"]
+        online_hosts = [ip for ip, data in results.items() if data["status"] == "online"]
     if online_hosts:
         logging.info(f"Підключаюсь по SSH до {len(online_hosts)} хостів...")
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -152,7 +159,7 @@ def main():
     else:
         logging.warning("Немає доступних хостів для SSH-з'єднання.")
 
-    # 4️⃣ Збереження результату в JSON
+
 
     parse_interfaces(results)
     parse_hostname(results)
