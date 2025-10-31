@@ -3,3 +3,4 @@ uvicorn
 paramiko
 ping3
 python-dotenv
+flask

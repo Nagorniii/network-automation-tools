@@ -80,37 +80,39 @@ def execute_command_ssh(ip,commands, port=22, timeout=10):
 def parse_interfaces(results):
 
     for ip in  results:
-        output = results[ip]["commands"]["sh ip int b"]
-        results[ip]["interfaces"] = []
-        lines = output.strip().splitlines()[2:]
+        if results[ip]["status"] != "offline":
+            output = results[ip]["commands"]["sh ip int b"]
+            results[ip]["interfaces"] = []
+            lines = output.strip().splitlines()[2:]
 
-        for line in lines:
-            parts = re.split(r"\s+", line.strip())
-            if len(parts) >= 6:
-                iface = {
-                    "interface": parts[0],
-                    "ip_address": parts[1],
-                    "protocol": parts[5]
-                }
-                results[ip]["interfaces"].append(iface)
+            for line in lines:
+                parts = re.split(r"\s+", line.strip())
+                if len(parts) >= 6:
+                    iface = {
+                        "interface": parts[0],
+                        "ip_address": parts[1],
+                        "protocol": parts[5]
+                    }
+                    results[ip]["interfaces"].append(iface)
 
 def parse_hostname(results):
 
     for ip in  results:
-        output = results[ip]["commands"]["sh run | i hostname"]
-        results[ip]["hostname"] = []
-        lines = output.strip().splitlines()[1:2]
+        if results[ip]["status"] != "offline":
+            output = results[ip]["commands"]["sh run | i hostname"]
+            results[ip]["hostname"] = []
+            lines = output.strip().splitlines()[1:2]
 
-        for line in lines:
-            parts = re.split(r"\s+", line.strip())
-            results[ip]["hostname"]=parts[1]
+            for line in lines:
+                parts = re.split(r"\s+", line.strip())
+                results[ip]["hostname"]=parts[1]
 
 
 
 def main():
     results = {}
 
-    with open("../ip_addresses.txt", "r") as f:
+    with open("ip_addresses.txt", "r") as f:
         ips = [line.strip() for line in f if line.strip()]
 
     logging.info("Починаю перевірку доступності хостів...")
@@ -159,10 +161,8 @@ def main():
     else:
         logging.warning("Немає доступних хостів для SSH-з'єднання.")
 
-
-
-    parse_interfaces(results)
     parse_hostname(results)
+    parse_interfaces(results)
 
 
     filename = "results.json"
@@ -170,6 +170,7 @@ def main():
         json.dump(results, f, indent=4, ensure_ascii=False)
 
     logging.info(f"Результати збережено у {filename}")
+    return results
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Device Status</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    .online { color: green; font-weight: bold; }
+    .offline { color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Network Devices</h1>
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th>IP</th>
+        <th>Status</th>
+        <th>Hostname</th>
+        <th>Interfaces</th>
+        <th>Last Check</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadData() {
+      const response = await fetch('/api/results');
+      const data = await response.json();
+      const tbody = document.querySelector('#resultsTable tbody');
+      tbody.innerHTML = '';
+
+      for (const [ip, info] of Object.entries(data)) {
+        const row = document.createElement('tr');
+        const statusClass = info.status === 'online' ? 'online' : 'offline';
+        const interfaces = info.interfaces ? info.interfaces.map(i => `${i.interface} (${i.protocol})`).join(', ') : '';
+
+        row.innerHTML = `
+          <td>${ip}</td>
+          <td class="${statusClass}">${info.status}</td>
+          <td>${info.hostname || ''}</td>
+          <td>${interfaces}</td>
+          <td>${info.timestamp || ''}</td>
+        `;
+        tbody.appendChild(row);
+      }
+    }
+
+    loadData();
+    setInterval(loadData, 10000); // оновлення кожні 10 секунд
+  </script>
+</body>
+</html>
