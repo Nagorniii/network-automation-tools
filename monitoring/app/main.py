@@ -27,7 +27,7 @@ def run_scan():
     return jsonify({"status": "Scan started"}), 202
 
 
-def background_scanner(interval=300):
+def background_scanner(interval=600):
     """Фонове оновлення результатів кожні 5 хвилин"""
     while True:
         print("🔄 Running scheduled scan...")

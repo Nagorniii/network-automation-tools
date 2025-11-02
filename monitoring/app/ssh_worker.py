@@ -112,14 +112,17 @@ def parse_hostname(results):
 def main():
     results = {}
 
+    # === Зчитування IP ===
     with open("ip_addresses.txt", "r") as f:
         ips = [line.strip() for line in f if line.strip()]
 
     logging.info("Починаю перевірку доступності хостів...")
-    with ThreadPoolExecutor(max_workers=min(32, os.cpu_count()+4)) as executor:
-        futures = {executor.submit(ping_ip, ip): ip for ip in ips}
-        for future in as_completed(futures):
-            ip = futures[future]
+
+    # === Паралельний пінг ===
+    with ThreadPoolExecutor(max_workers=min(32, os.cpu_count() + 4)) as executor:
+        future_to_ip = {executor.submit(ping_ip, ip): ip for ip in ips}
+        for future in as_completed(future_to_ip):
+            ip = future_to_ip[future]
             try:
                 is_alive, ip, timestamp = future.result()
                 results[ip] = {
@@ -130,13 +133,19 @@ def main():
                 logging.error(f"[FATAL] {ip} crashed: {e}")
                 results[ip] = {"status": "error", "error": str(e)}
 
-        online_hosts = [ip for ip, data in results.items() if data["status"] == "online"]
+    # === Збереження вихідного порядку ===
+    ordered_ips = [ip for ip in ips if ip in results]
+
+    online_hosts = [ip for ip in ordered_ips if results[ip]["status"] == "online"]
+
+    # === SSH підключення до доступних ===
     if online_hosts:
         logging.info(f"Підключаюсь по SSH до {len(online_hosts)} хостів...")
+
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {executor.submit(execute_command_ssh, ip, commands): ip for ip in online_hosts}
-            for future in as_completed(futures):
-                ip = futures[future]
+            future_to_ip = {executor.submit(execute_command_ssh, ip, commands): ip for ip in online_hosts}
+            for future in as_completed(future_to_ip):
+                ip = future_to_ip[future]
                 try:
                     output = future.result()
                     if output:
@@ -144,13 +153,18 @@ def main():
                         for idx, cmd in enumerate(commands):
                             start_marker = f"!CMD_START_{idx}!"
                             end_marker = f"!CMD_END_{idx}!"
-                            match = re.search(rf"\s*{re.escape(start_marker)}\s*(.*?)\s*{re.escape(end_marker)}\s*", output, re.S)
+                            match = re.search(
+                                rf"\s*{re.escape(start_marker)}\s*(.*?)\s*{re.escape(end_marker)}\s*",
+                                output,
+                                re.S
+                            )
 
                             if match:
                                 cmd_output = match.group(1).strip()
                                 results[ip]["commands"][cmd] = cmd_output
                             else:
                                 results[ip]["commands"][cmd] = ""
+
                         logging.info(f"[{ip}] Команди виконані")
                     else:
                         logging.warning(f"[{ip}] Порожній результат")
@@ -161,16 +175,24 @@ def main():
     else:
         logging.warning("Немає доступних хостів для SSH-з'єднання.")
 
+    # === Парсинг даних ===
     parse_hostname(results)
     parse_interfaces(results)
 
+    # === Формування JSON у вихідному порядку ===
+    output_list = []
+    for ip in ips:
+        entry = {"ip": ip}
+        entry.update(results.get(ip, {}))
+        output_list.append(entry)
 
     filename = "results.json"
     with open(filename, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=4, ensure_ascii=False)
+        json.dump(output_list, f, indent=4, ensure_ascii=False)
 
     logging.info(f"Результати збережено у {filename}")
-    return results
+    return output_list
+
 
 if __name__ == "__main__":
     main()

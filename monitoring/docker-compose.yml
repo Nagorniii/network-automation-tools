@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   monitor:
     build: .
@@ -8,6 +6,8 @@ services:
       - "5000:5000"
     volumes:
       - ./app:/app
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     working_dir: /app
     command: python main.py
     restart: unless-stopped
